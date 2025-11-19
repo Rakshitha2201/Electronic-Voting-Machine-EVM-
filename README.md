@@ -1,6 +1,9 @@
-#  Project Report: Electronic Voting Machine (EVM)
+# PROJECT REPORT: ELECTRONIC VOTING MACHINE (EVM) ANALYSIS
+</br>
 
-**Project Title:** Design of a Finite State Machine (FSM) Controlled Electronic Voting Machine using Verilog HDL and Xilinx Vivado
+Design of a Finite State Machine (FSM) Controlled Electronic Voting Machine using Verilog HDL and Xilinx Vivado
+
+
 
 ## 1. Abstract
 
@@ -9,6 +12,7 @@ This project describes the design and verification of a simplified three-candida
 The design utilizes a **Finite State Machine (FSM)** for sequential control, which includes **IDLE**, **VOTING**, and **END** states. It uses synchronous memory models: **ROM** for candidate IDs and **RAM** for mutable vote counters. Developed and verified using the **Xilinx Vivado Design Suite**, simulation results confirm the FSM correctly manages the voting flow, and the combinational winner logic accurately identifies the winner, including applying a **tie-breaker rule** in the final state. The project demonstrates a reliable, verifiable digital voting system suitable for FPGA implementation.
 
 ---
+</br>
 
 ## 2. Introduction
 
@@ -32,6 +36,7 @@ The shift to digital voting is driven by key advantages:
 The **Xilinx Vivado Design Suite** was selected for its comprehensive capabilities in RTL design, synthesis, implementation, and rigorous behavioral simulation. **Verilog HDL** was used to model the synchronous and combinational digital logic, including the FSM and memory structures.
 
 ---
+</br>
 
 ## 3. Literature Survey
 
@@ -57,6 +62,7 @@ A persistent need identified in previous designs is the requirement for a **robu
 This project directly addresses the **concurrency issue** by implementing a **prioritized input arbitration (mutual exclusion) mechanism** within the synchronous counting module, ensuring only **one vote is recorded per clock cycle**.
 
 ---
+</br>
 
 ## 4. Problem Definition & Objectives
 
@@ -73,12 +79,24 @@ The core problem is to develop a reliable digital system that can correctly reco
 5.  To verify correctness through detailed Vivado waveform analysis of state transitions and counter behavior.
 
 ---
+</br>
 
+## 5. System Requirements
 
+### 5.1 Hardware & Software Requirements
 
-## 5. System Design
+The project requires a PC/Laptop capable of running the **Xilinx Vivado Design Suite (2020+)** for synthesis and simulation. The core language is **Verilog HDL**. The immediate requirement is the **Vivado Behavioral Simulator** for verification.
 
-### 5.1 Overall Architecture / Block Diagram
+### 5.2 HDL Methodology Used
+
+The design adheres to the **RTL (Register Transfer Level) Design methodology**. The system is modeled using **Behavioral Modeling** techniques, specifically utilizing the standard **two-block FSM structure**. Verification relies on a **Testbench Driven Verification** approach, confirming expected outcomes via a self-checking testbench stimulus pattern (`@(posedge clk)`).
+
+---
+</br>
+
+## 6. System Design
+
+### 6.1 Overall Architecture / Block Diagram
 
 The system separates the control and data paths.
 * The inputs (`btn_c0`, `btn_c1`, `btn_c2`, `end_btn`) feed into the **FSM Controller**.
@@ -86,7 +104,46 @@ The system separates the control and data paths.
 * The **Winner Display Logic** provides the output when the FSM reaches the final state.
 
 
-### 5.2 Core Module Descriptions
+### 6.2 Core Module Descriptions (Continued)
+
+This prioritized `if-else if` construct guarantees that if C0 and C1 are pressed simultaneously, **only C0 registers a vote**, resolving the concurrency problem in hardware. Counting is enabled only during the `S_IDLE` (for the first vote) or `S_VOTE` states.
+
+#### Memory Model (ROM & RAM)
+
+The memory is modeled using Verilog arrays:
+* **ROM**: `reg [1:0] candidate_rom [0:2];` initialized to store fixed candidate IDs (`00`, `01`, `10`).
+* **RAM**: `reg [7:0] votes [0:2];` models the dynamic, synchronous vote counters. Each counter is 8 bits, allowing up to 255 votes per candidate, and is initialized to zero on reset.
+
+#### Winner Detection Logic and Tie-Breaker Flow
+
+This module is a **purely combinational circuit** that determines the winner based on the current state of the vote counters. The output `winner` is only driven with the final result when the FSM reaches the **`S_END` state**. Otherwise, the output defaults to Candidate 0's ID (`2'b00`).
+
+The logic establishes a **hardware-defined tie-breaking priority** to ensure a decisive winner is always declared in case of equal vote counts. The fixed priority order is: **Candidate 0 (C0) > Candidate 1 (C1) > Candidate 2 (C2)**.
+
+The combinational decision flow uses nested `if-else if` logic:
+1.  **Check C0 (Highest Priority)**: If `votes[0]` is greater than or equal to both `votes[1]` and `votes[2]`, Candidate 0 is declared the winner (ID `2'b00`).
+2.  **Check C1 (Medium Priority)**: If C0 was not the winner, the logic checks if `votes[1]` is greater than or equal to both `votes[0]` and `votes[2]`. This means C1 wins if its count is strictly highest or if it ties with C2.
+3.  **Default C2 (Lowest Priority)**: If neither C0 nor C1 satisfies the winning condition, Candidate 2 is declared the winner (ID `2'b10`).
+
+
+### 6.3 Finite State Machine (FSM) Flow and Control Logic
+
+The system is controlled by a **3-state Moore FSM**, implemented using the standard two-block structure. This FSM ensures the EVM operates in a strictly controlled, sequential manner, dictating exactly when counting is enabled and when results are displayed.
+
+#### FSM Flow (The Three States)
+
+| State | ID | Description | Transition Condition | Next State |
+| :---: | :---: | :--- | :--- | :---: |
+| **S\_IDLE** | `2'b00` | Initial state; counting is inhibited. | Assertion of any candidate button (`btn_c0` OR `btn_c1` OR `btn_c2`). | S\_VOTE |
+| **S\_VOTE** | `2'b01` | Active election phase; synchronous counting is enabled. | Assertion of the `end_btn` input. | S\_END |
+| **S\_END** | `2'b10` | Terminal state; counting is disabled. | None; FSM is latched here, only exiting upon a full system reset. | S\_END |
+
+All state changes are **synchronous** to the positive clock edge (`posedge clk`). The design ensures the first vote is registered simultaneously on the same clock edge that transitions the FSM from `S_IDLE` to `S_VOTE`, ensuring no vote is lost during initiation.
+
+
+
+
+### 6.4 Core Module Descriptions
 
 #### Input and Counting Module
 
@@ -101,40 +158,9 @@ else if (btn_c1)
 else if (btn_c2) // Lowest priority
     votes[2] <= votes[2] + 1;
 ```
-
-### 5.3 Finite State Machine (FSM) Flow and Control Logic
-
-The system is controlled by a **3-state Moore FSM**, implemented using the standard two-block structure. This FSM ensures the EVM operates in a strictly controlled, sequential manner, dictating exactly when counting is enabled and when results are displayed.
-
-#### FSM Flow (The Three States)
-
-| State | ID | Description | Transition Condition | Next State |
-| :---: | :---: | :--- | :--- | :---: |
-| **S\_IDLE** | `2'b00` | Initial state; counting is inhibited. | Assertion of any candidate button (`btn_c0` OR `btn_c1` OR `btn_c2`). | S\_VOTE |
-| **S\_VOTE** | `2'b01` | Active election phase; synchronous counting is enabled. | Assertion of the `end_btn` input. | S\_END |
-| **S\_END** | `2'b10` | Terminal state; counting is disabled. | None; FSM is latched here, only exiting upon a full system reset. | S\_END |
-
-All state changes are **synchronous** to the positive clock edge (`posedge clk`). The design ensures the first vote is registered simultaneously on the same clock edge that transitions the FSM from `S_IDLE` to `S_VOTE`, ensuring no vote is lost during initiation.
-
 ---
+</br>
 
-## 6. Verilog HDL Implementation
-
-### 6.1 Code Structure and Modules
-
-The design is implemented in a single top-level module, `VOTING_MACHINE_v1005`. It leverages the following key Verilog constructs:
-* **FSM**: Implemented using two `always` blocks: one synchronous block for the state register (`current_state`) and one combinational block for the next-state logic (`next_state`).
-* **Vote Counter**: A synchronous `always @(posedge clk or posedge reset)` block handles all counting and implements the prioritized mutual exclusion logic using `if-else if`.
-* **Winner Selector**: A combinational `always @(*)` block implements the complex comparison logic to determine the winner based on the `votes` array contents.
-
-### 6.2 Testbench and Verification Strategy
-
-The testbench (`VOTING_MACHINE_tb`) is crucial for verification. It uses an `always #5 clk = ~clk;` block to generate a 10ns clock and an `initial` block for the stimulus.
-
-* **Stimulus Pattern**: The test sequence includes a full system reset, transitions through all states, sequential voting, and the crucial simultaneous press of `btn_c0` and `btn_c1` to confirm the mutual exclusion logic correctly prioritizes C0.
-* **Internal Signal Tapping**: Internal signals like the vote counters (`DUT.votes[0]`, etc.) are explicitly tapped using wire declarations to facilitate deep inspection in Vivado.
-
----
 ## 7. Code For Stimualtion
 ```verilog
 `timescale 1ns / 1ps
@@ -388,17 +414,35 @@ module VOTING_MACHINE_tb;
 
 endmodule
 ```
-----
 
-## 8. Simulation Results
+</br>
 
-### 8.1 Waveform Output
+## 8. Verilog HDL Implementation
 
-<img width="1579" height="821" alt="Screenshot 2025-11-18 135811" src="https://github.com/user-attachments/assets/6da789e8-6b51-4368-ba55-962b25b54e27" />
+### 8.1 Code Structure and Modules
 
+The design is implemented in a single top-level module, `VOTING_MACHINE_v1005`. It leverages the following key Verilog constructs:
+* **FSM**: Implemented using two `always` blocks: one synchronous block for the state register (`current_state`) and one combinational block for the next-state logic (`next_state`).
+* **Vote Counter**: A synchronous `always @(posedge clk or posedge reset)` block handles all counting and implements the prioritized mutual exclusion logic using `if-else if`.
+* **Winner Selector**: A combinational `always @(*)` block implements the complex comparison logic to determine the winner based on the `votes` array contents.
 
+### 8.2 Testbench and Verification Strategy
 
-### 8.2 Explanation of Waveform
+The testbench (`VOTING_MACHINE_tb`) is crucial for verification. It uses an `always #5 clk = ~clk;` block to generate a 10ns clock and an `initial` block for the stimulus.
+
+* **Stimulus Pattern**: The test sequence includes a full system reset, transitions through all states, sequential voting, and the crucial simultaneous press of `btn_c0` and `btn_c1` to confirm the mutual exclusion logic correctly prioritizes C0.
+* **Internal Signal Tapping**: Internal signals like the vote counters (`DUT.votes[0]`, etc.) are explicitly tapped using wire declarations to facilitate deep inspection in Vivado.
+
+---
+</br>
+
+## 9. Simulation Results
+
+### 9.1 Waveform Signals and Setup
+
+Critical signals monitored in the Vivado waveform viewer include: `clk`, `reset`, `btn_c[x]`, `state` (FSM status), `v[x]` (internal vote counters), and `winner` (output). This setup allows for visual confirmation of synchronous updates.
+
+### 9.2 Explanation of Waveform
 
 The simulation confirms the test sequence successfully registers votes:
 
@@ -412,21 +456,25 @@ The simulation confirms the test sequence successfully registers votes:
 | **Result State** | `end_btn` active | `state` $\rightarrow$ S\_END (`2'b10`). | `state` transitions to `10` |
 | **Final Output** | `state = S_END` | Winner logic selects the winner based on tie-breaker (C0=5, C1=5, C2=2 $\rightarrow$ C0 wins). | `winner` output latches to `2'b00` |
 
-### 8.3 Verification and Validation
+### 9.3 Verification and Validation
 
 The simulation results ($v0=5, v1=5, v2=2$) align perfectly with the stimulus pattern applied by the testbench. Since $v0$ and $v1$ have equal counts, the hardware-defined **tie-breaking priority (C0 $\rightarrow$ C1 $\rightarrow$ C2)** is invoked. The final output of **`2'b00` (Candidate 0's ID)** successfully validates the combinational winner detection logic and the overall integrity of the counting system, including the concurrency arbitration.
 
-#### Final Simulation Results (Console Output)
+#### Final Simulation Waveform Output
+
+<img width="1579" height="821" alt="Screenshot 2025-11-18 135811" src="https://github.com/user-attachments/assets/e97109be-2245-4566-89ab-1bb720351bf9" />
+
 
 ---
+</br>
 
-## 9. Applications and Advantages
+## 10. Applications and Advantages
 
-### 9.1 Applications
+### 10.1 Applications
 
 The scalable core logic is immediately applicable to small-scale elections, such as Student Council Voting or Opinion Polls. By implementing the logic on an FPGA, it forms a highly reliable base for larger, more secure **National Election Systems** or Secure Organizational Voting environments where verifiability is paramount.
 
-### 9.2 Advantages
+### 10.2 Advantages
 
 The FPGA-based approach offers several significant advantages:
 * **Real-time Processing** due to hardware execution.
@@ -435,10 +483,11 @@ The FPGA-based approach offers several significant advantages:
 * Built-in **Security** via the mutual exclusion logic.
 
 ---
+</br>
 
-## 10. Limitations and Future Scope
+## 11. Limitations and Future Scope
 
-### 10.1 Limitations
+### 11.1 Limitations
 
 The current system has three primary limitations:
 * **Simulated Environment Only** (no physical hardware deployment).
@@ -446,7 +495,7 @@ The current system has three primary limitations:
 * Supports a **Limited Number of Candidates** (three).
 * There is no external display interface.
 
-### 10.2 Future Scope
+### 11.2 Future Scope
 
 Future work should focus on:
 * **FPGA Prototype on Hardware**: Synthesizing the design and deploying it on a physical FPGA board interfaced with external components (buttons, LEDs).
@@ -455,17 +504,21 @@ Future work should focus on:
 * **Scaling**: Modifying the bus widths and memory arrays to support a larger number of candidates.
 
 ---
+</br>
 
-## 11. Conclusion
+## 12. Conclusion
 
 The design and verification of the FPGA-based Electronic Voting Machine were successfully completed using **Verilog HDL** and the **Xilinx Vivado environment**. The project achieved its core objectives by demonstrating a reliable **FSM controller**, accurate vote counting, and a critical **mutual exclusion mechanism** to prevent input concurrency errors. The behavioral simulation results confirm the system's robust and secure operation, establishing a solid, auditable foundation for future hardware implementation.
 
 ---
+</br>
 
-## 12. References
+## 13. References
 
 1.  Xilinx. (2024). Vivado Design Suite User Guide: Logic Simulation. Xilinx Documentation Portal.
 2.  Palnitkar, S. (2003). Verilog HDL: A Guide to Digital Design and Synthesis. Prentice Hall.
 3.  IEEE Standards Association. (2021). IEEE Standard for Electronic Voting System Requirements (IEEE 1622).
 4.  Weste, N. H. E., & Harris, D. M. (2021). CMOS VLSI Design: A Circuit and System Perspective (5th ed.). Pearson Education.
 5.  Academic resources on FPGA-based design and digital voting system security.
+
+
